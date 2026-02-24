@@ -1,0 +1,10 @@
+node_modules/
+tasks.json
+usage.json
+agents.json
+activity.jsonl
+*.log
+.DS_Store
+.env*
+.vault*
+.secrets*
