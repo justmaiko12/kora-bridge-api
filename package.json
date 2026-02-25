@@ -2,15 +2,19 @@
   "name": "kora-bridge-api",
   "version": "1.0.0",
   "description": "Bridge API for Kora task syncing with Mission Control",
-  "main": "server.js",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node api/index.js",
+    "dev": "node server.js",
+    "build": "echo 'Vercel serverless build'"
   },
-  "keywords": ["kora", "mission-control", "bridge", "tasks"],
+  "keywords": ["kora", "mission-control", "bridge", "tasks", "vercel"],
   "author": "Kora",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
