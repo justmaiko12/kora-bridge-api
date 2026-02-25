@@ -401,10 +401,197 @@ app.put('/api/agents/:id', (req, res) => {
   res.json({ agent: agents[id] });
 });
 
+// Deals Pipeline Storage
+const DEALS_FILE = path.join(__dirname, 'deals.json');
+
+function loadDeals() {
+  try {
+    if (fs.existsSync(DEALS_FILE)) {
+      return JSON.parse(fs.readFileSync(DEALS_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error loading deals:', err);
+  }
+  return [];
+}
+
+function saveDeals(deals) {
+  try {
+    fs.mkdirSync(path.dirname(DEALS_FILE), { recursive: true });
+    fs.writeFileSync(DEALS_FILE, JSON.stringify(deals, null, 2));
+  } catch (err) {
+    console.error('Error saving deals:', err);
+  }
+}
+
+let deals = loadDeals();
+
+// GET /api/deals/pipeline - Get deals pipeline
+app.get('/api/deals/pipeline', (req, res) => {
+  const { account } = req.query;
+  
+  // Filter by account if provided
+  const filtered = account 
+    ? deals.filter(d => d.account === account)
+    : deals;
+  
+  // Group by stage
+  const pipeline = {
+    prospect: filtered.filter(d => d.stage === 'prospect'),
+    contacted: filtered.filter(d => d.stage === 'contacted'),
+    interested: filtered.filter(d => d.stage === 'interested'),
+    meeting: filtered.filter(d => d.stage === 'meeting'),
+    negotiating: filtered.filter(d => d.stage === 'negotiating'),
+    closed: filtered.filter(d => d.stage === 'closed'),
+    lost: filtered.filter(d => d.stage === 'lost')
+  };
+  
+  res.json({
+    pipeline,
+    total: filtered.length,
+    account: account || 'all',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// GET /api/deals/inbox - Get inbox deals (unread/recent)
+app.get('/api/deals/inbox', (req, res) => {
+  const { account } = req.query;
+  
+  const filtered = account 
+    ? deals.filter(d => d.account === account && !d.read)
+    : deals.filter(d => !d.read);
+  
+  res.json({
+    inbox: filtered.slice(-20),  // Last 20
+    count: filtered.length,
+    account: account || 'all',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// POST /api/deals/draft - Save draft deal
+app.post('/api/deals/draft', (req, res) => {
+  const { company, contact, email, stage = 'prospect', account } = req.body;
+  
+  if (!company || !email) {
+    return res.status(400).json({ error: 'Company and email required' });
+  }
+  
+  const deal = {
+    id: crypto.randomUUID(),
+    company,
+    contact: contact || 'Unknown',
+    email,
+    stage,
+    account: account || 'unknown@shluv.com',
+    value: null,
+    read: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    draft: true
+  };
+  
+  deals.push(deal);
+  saveDeals(deals);
+  
+  console.log(`✅ Deal draft created: ${company}`);
+  res.status(201).json({ deal });
+});
+
+// POST /api/deals/create - Create deal from draft
+app.post('/api/deals/create', (req, res) => {
+  const { id, value } = req.body;
+  
+  const dealIndex = deals.findIndex(d => d.id === id);
+  if (dealIndex === -1) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+  
+  const deal = deals[dealIndex];
+  deal.draft = false;
+  deal.value = value;
+  deal.updatedAt = new Date().toISOString();
+  
+  deals[dealIndex] = deal;
+  saveDeals(deals);
+  
+  console.log(`✅ Deal created: ${deal.company} ($${value})`);
+  res.json({ deal });
+});
+
+// PUT /api/deals/update - Update deal
+app.put('/api/deals/update', (req, res) => {
+  const { id, stage, value, notes, deadline } = req.body;
+  
+  const dealIndex = deals.findIndex(d => d.id === id);
+  if (dealIndex === -1) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+  
+  const deal = deals[dealIndex];
+  if (stage) deal.stage = stage;
+  if (value !== undefined) deal.value = value;
+  if (notes) deal.notes = notes;
+  if (deadline) deal.deadline = deadline;
+  deal.read = true;
+  deal.updatedAt = new Date().toISOString();
+  
+  deals[dealIndex] = deal;
+  saveDeals(deals);
+  
+  console.log(`✅ Deal updated: ${deal.company} → ${stage || deal.stage}`);
+  res.json({ deal });
+});
+
+// DELETE /api/deals/delete - Delete deal
+app.delete('/api/deals/delete', (req, res) => {
+  const { id } = req.body;
+  
+  const dealIndex = deals.findIndex(d => d.id === id);
+  if (dealIndex === -1) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+  
+  const [deleted] = deals.splice(dealIndex, 1);
+  saveDeals(deals);
+  
+  console.log(`✅ Deal deleted: ${deleted.company}`);
+  res.json({ success: true, deal: deleted });
+});
+
+// POST /api/deals/link - Link email to deal
+app.post('/api/deals/link', (req, res) => {
+  const { dealId, email } = req.body;
+  
+  if (!dealId || !email) {
+    return res.status(400).json({ error: 'dealId and email required' });
+  }
+  
+  const dealIndex = deals.findIndex(d => d.id === dealId);
+  if (dealIndex === -1) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+  
+  const deal = deals[dealIndex];
+  if (!deal.linkedEmails) deal.linkedEmails = [];
+  if (!deal.linkedEmails.includes(email)) {
+    deal.linkedEmails.push(email);
+  }
+  deal.updatedAt = new Date().toISOString();
+  
+  deals[dealIndex] = deal;
+  saveDeals(deals);
+  
+  console.log(`✅ Email linked to deal: ${deal.company}`);
+  res.json({ deal });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Kora Bridge API running on http://localhost:${PORT}`);
   console.log(`📊 Tasks: ${tasks.length} loaded from disk`);
+  console.log(`💼 Deals: ${deals.length} loaded from disk`);
   console.log(`🤖 Agents: ${Object.keys(agents).length} registered`);
   console.log(`🔐 Secret: ${SECRET.substring(0, 10)}...`);
 });
