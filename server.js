@@ -14,7 +14,8 @@ const PORT = process.env.PORT || 3001;
 
 // Simple in-memory task storage (persisted to JSON)
 const TASKS_FILE = path.join(__dirname, 'tasks.json');
-const SECRET = process.env.KORA_BRIDGE_SECRET || 'kora-secret-key-change-me';
+// Support both KORA_BRIDGE_SECRET and generic Bearer token
+const SECRET = process.env.KORA_BRIDGE_SECRET || process.env.BRIDGE_SECRET || 'kora-api-key-internal';
 
 app.use(express.json());
 
@@ -585,6 +586,43 @@ app.post('/api/deals/link', (req, res) => {
   
   console.log(`✅ Email linked to deal: ${deal.company}`);
   res.json({ deal });
+});
+
+// GET /api/briefing - Dashboard briefing data
+app.get('/api/briefing', (req, res) => {
+  // Return briefing structure with current data
+  // AI News, K-pop News, Team Tasks, Content Today
+  
+  const briefing = {
+    aiNews: {
+      items: [
+        // TODO: Fetch from news API
+      ],
+      lastUpdated: new Date().toISOString(),
+    },
+    kpopNews: {
+      items: [
+        // TODO: Fetch from K-pop source
+      ],
+      lastUpdated: new Date().toISOString(),
+    },
+    teamTasks: {
+      items: tasks.filter(t => t.status !== 'completed').slice(0, 5),
+      lastUpdated: new Date().toISOString(),
+    },
+    content: {
+      items: [
+        // TODO: Fetch from content DB
+      ],
+      lastUpdated: new Date().toISOString(),
+    },
+    preferences: {
+      aiNews: { liked: [], disliked: [], notes: '' },
+      kpopNews: { liked: [], disliked: [], notes: '' },
+    },
+  };
+  
+  res.json(briefing);
 });
 
 // Start server
